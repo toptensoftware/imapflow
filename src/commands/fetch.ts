@@ -177,6 +177,13 @@ export default async function fetch(
                 }
             }
 
+            // Message preview text (RFC 8970), only if the server advertises PREVIEW
+            if (query.preview) {
+                if (connection.capabilities.has('PREVIEW')) {
+                    queryStructure.push({ type: 'ATOM', value: 'PREVIEW' });
+                }
+            }
+
             // always ask for modseq if possible
             if (connection.enabled.has('CONDSTORE') && !mailbox.noModseq) {
                 queryStructure.push({ type: 'ATOM', value: 'MODSEQ' });

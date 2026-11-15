@@ -1265,6 +1265,33 @@ describe('tools', () => {
     });
 
     // ============================================
+    // formatMessageResponse: PREVIEW (RFC 8970)
+    // ============================================
+    it('Tools: formatMessageResponse maps PREVIEW to preview', async () => {
+        let untagged = await parser('* 4 FETCH (UID 12 PREVIEW "Hello there, this is the start")');
+        let result: any = await tools.formatMessageResponse(untagged, {} as any);
+        assert.equal(result.uid, 12);
+        assert.equal(result.preview, 'Hello there, this is the start');
+    });
+    it('Tools: formatMessageResponse maps a PREVIEW literal to preview', async () => {
+        let untagged = await parser('* 4 FETCH (UID 12 PREVIEW {5}\r\n)', { literals: [Buffer.from('Hello')] });
+        let result: any = await tools.formatMessageResponse(untagged, {} as any);
+        assert.equal(result.preview, 'Hello');
+    });
+    it('Tools: formatMessageResponse keeps an empty PREVIEW', async () => {
+        let untagged = await parser('* 4 FETCH (UID 12 PREVIEW "")');
+        let result: any = await tools.formatMessageResponse(untagged, {} as any);
+        assert.equal(result.preview, '');
+    });
+    it('Tools: formatMessageResponse leaves preview unset for PREVIEW NIL', async () => {
+        let untagged = await parser('* 4 FETCH (UID 12 PREVIEW NIL)');
+        let result: any = await tools.formatMessageResponse(untagged, {} as any);
+        assert.equal(result.uid, 12);
+        assert.equal(result.preview, undefined);
+        assert.ok(!('preview' in result));
+    });
+
+    // ============================================
     // formatMessageResponse: BINARY vs BODY part tracking (RFC 3516 / RFC 9051)
     // ============================================
     it('Tools: formatMessageResponse records which parts arrived via BINARY', async () => {

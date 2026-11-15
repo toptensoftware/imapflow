@@ -392,6 +392,49 @@ describe('commands/fetch', () => {
         const hasXGMLABELS = JSON.stringify(queryAttrs).includes('X-GM-LABELS');
         assert.ok(hasXGMLABELS);
     });
+    it('Commands: fetch with preview query (RFC 8970)', async () => {
+        let queryAttrs: any = null;
+        const connection = createMockConnection({
+            state: 3,
+            capabilities: new Map([['PREVIEW', true]]),
+            exec: async (cmd: any, attrs: any) => {
+                queryAttrs = attrs;
+                return { next: () => {} };
+            }
+        });
+
+        await fetchCommand(connection, '1', { preview: true });
+        assert.ok(queryAttrs[1].some((item: any) => item.type === 'ATOM' && item.value === 'PREVIEW'));
+    });
+    it('Commands: fetch without preview capability does not request PREVIEW', async () => {
+        let queryAttrs: any = null;
+        const connection = createMockConnection({
+            state: 3,
+            exec: async (cmd: any, attrs: any) => {
+                queryAttrs = attrs;
+                return { next: () => {} };
+            }
+        });
+
+        await fetchCommand(connection, '1', { preview: true });
+        assert.ok(queryAttrs);
+        assert.ok(!JSON.stringify(queryAttrs).includes('PREVIEW'));
+    });
+    it('Commands: fetch does not request PREVIEW unless asked', async () => {
+        let queryAttrs: any = null;
+        const connection = createMockConnection({
+            state: 3,
+            capabilities: new Map([['PREVIEW', true]]),
+            exec: async (cmd: any, attrs: any) => {
+                queryAttrs = attrs;
+                return { next: () => {} };
+            }
+        });
+
+        await fetchCommand(connection, '1', { flags: true });
+        assert.ok(queryAttrs);
+        assert.ok(!JSON.stringify(queryAttrs).includes('PREVIEW'));
+    });
     it('Commands: fetch with CONDSTORE enabled', async () => {
         let queryAttrs = null;
         const connection = createMockConnection({

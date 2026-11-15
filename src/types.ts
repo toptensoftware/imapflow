@@ -571,6 +571,8 @@ export interface FetchQueryObject {
     threadId?: boolean | undefined;
     /** If true then include GMail labels in the response (only if server supports X-GM-EXT-1 extension) */
     labels?: boolean | undefined;
+    /** If true then include the message preview text in the response (only if server supports PREVIEW extension, RFC 8970) */
+    preview?: boolean | undefined;
     /** If true then includes full headers of the message in the response. If the value is an array of header keys then includes only headers listed in the array */
     headers?: boolean | string[] | undefined;
     /** An array of BODYPART identifiers to include in the response */
@@ -661,6 +663,8 @@ export interface FetchMessageObject {
     threadId?: string | undefined;
     /** A Set of labels. Only present if server supports X-GM-EXT-1 extension */
     labels?: Set<string> | undefined;
+    /** Message preview text (RFC 8970). Only present if requested, the server supports PREVIEW extension, and it returned a preview (not NIL) */
+    preview?: string | undefined;
     /** Message size */
     size?: number | undefined;
     /** A set of message flags */

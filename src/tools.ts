@@ -979,6 +979,16 @@ export async function formatMessageResponse(
                 map.labels = new Set(getArray(attribute).map(label => (connection ? decodePath(connection, label) : label)));
                 break;
 
+            case 'preview': {
+                // RFC 8970: an nstring; NIL means the server could not generate a preview
+                // right now, so the field is left unset. An empty string is a valid preview.
+                let value = getString(attribute);
+                if (typeof value === 'string') {
+                    map.preview = value;
+                }
+                break;
+            }
+
             case 'rfc822.size':
                 map.size = getUint(attribute) || 0;
                 break;
