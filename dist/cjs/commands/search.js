@@ -1,0 +1,201 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.default = search;
+const tools_js_1 = require("../tools.js");
+const esearch_parser_js_1 = require("./esearch-parser.js");
+const search_common_js_1 = require("./search-common.js");
+/**
+ * Strips the leading (TAG "X") correlator list and the optional UID atom from an
+ * ESEARCH untagged response, leaving only the result keyword/value pairs.
+ * The IMAP parser represents parenthesized groups as plain Arrays, not objects
+ * with type: 'LIST'.
+ *
+ * @param attrs - Raw attribute array from the IMAP parser
+ * @returns Attribute array starting at the first result keyword
+ */
+const stripEsearchPrefix = (attrs) => {
+    let start = 0;
+    if (attrs[start] && Array.isArray(attrs[start]))
+        start++;
+    if (attrs[start] && typeof attrs[start].value === 'string' && attrs[start].value.toUpperCase() === 'UID')
+        start++;
+    return attrs.slice(start);
+};
+/**
+ * Searches for messages matching the specified criteria.
+ *
+ * @param connection - IMAP connection instance
+ * @param query - Search query object, or true/empty object to match all messages
+ * @param options - Search options
+ * @param options.uid - If true, use UID SEARCH instead of SEARCH
+ * @param options.returnOptions - ESEARCH RETURN options. When present AND the
+ *   server advertises ESEARCH capability, triggers ESEARCH and returns an ESearchResult.
+ *   Items are strings ('MIN','MAX','COUNT','ALL') or objects ({ partial: '1:100' }).
+ *   When server lacks ESEARCH, falls back to plain SEARCH and returns number[].
+ */
+async function search(connection, query, options) {
+    const mailbox = (0, tools_js_1.getSelectedMailbox)(connection);
+    if (!mailbox) {
+        // nothing to do here
+        return false;
+    }
+    options = options || {};
+    const attributes = (0, search_common_js_1.compileSearchQuery)(connection, query);
+    if (!attributes) {
+        return false;
+    }
+    // ESEARCH is part of base IMAP4rev2
+    const useEsearch = options.returnOptions && options.returnOptions.length > 0 && (0, tools_js_1.hasCapability)(connection, 'ESEARCH');
+    if (useEsearch) {
+        // Build RETURN (...) item list
+        const returnItems = [];
+        for (const opt of options.returnOptions) {
+            if (typeof opt === 'string') {
+                returnItems.push({ type: 'ATOM', value: opt.toUpperCase() });
+            }
+            else if (opt && typeof opt.partial === 'string') {
+                // RFC 9394: PARTIAL is an atom followed by the range atom, both inside RETURN (...)
+                returnItems.push({ type: 'ATOM', value: 'PARTIAL' });
+                returnItems.push({ type: 'ATOM', value: opt.partial });
+            }
+        }
+        // If all returnOptions entries were invalid (e.g. objects lacking a string
+        // `partial` field), returnItems would be empty. Emitting "RETURN ()" is
+        // technically valid per RFC 4731 but returns nothing useful. Fall through
+        // to the legacy SEARCH path instead so the caller gets a usable result.
+        if (returnItems.length > 0) {
+            const returnClause = [{ type: 'ATOM', value: 'RETURN' }, returnItems];
+            let esearchResult = {};
+            let response;
+            try {
+                response = await connection.exec(options.uid ? 'UID SEARCH' : 'SEARCH', [...returnClause, ...attributes], {
+                    untagged: {
+                        ESEARCH: async (untagged) => {
+                            if (!untagged || !untagged.attributes)
+                                return;
+                            esearchResult = (0, esearch_parser_js_1.parseEsearchResponse)(stripEsearchPrefix(untagged.attributes));
+                        }
+                    }
+                });
+                response.next();
+                return esearchResult;
+            }
+            catch (err) {
+                return await (0, search_common_js_1.searchFailed)(connection, err);
+            }
+        }
+        // returnItems was empty - fall through to legacy SEARCH path below
+    }
+    // Legacy SEARCH path (no returnOptions, or server lacks ESEARCH)
+    // A plain array, deduplicated once all responses are in: on a large mailbox the result
+    // holds millions of numbers, and a Set costs several times the memory of an array
+    let results = [];
+    // How many numbers ESEARCH ALL expansions have added, see the budget below
+    let esearchAdded = 0;
+    let response;
+    try {
+        response = await connection.exec(options.uid ? 'UID SEARCH' : 'SEARCH', attributes, {
+            untagged: {
+                SEARCH: async (untagged) => {
+                    if (!untagged) {
+                        return;
+                    }
+                    results = (0, search_common_js_1.collectResponseNumbers)(connection, results, untagged, 'SEARCH');
+                },
+                // IMAP4rev2 servers answer even a plain SEARCH with an untagged
+                // ESEARCH response (RFC 9051 deprecated the SEARCH response), so
+                // both forms are collected into the same result set
+                ESEARCH: async (untagged) => {
+                    if (!untagged || !untagged.attributes) {
+                        return;
+                    }
+                    let parsed = (0, esearch_parser_js_1.parseEsearchResponse)(stripEsearchPrefix(untagged.attributes));
+                    if (parsed.all) {
+                        // Walk the compact sequence-set directly into the results - the ALL
+                        // result may cover the entire mailbox, so expanding it into an
+                        // intermediate array first would double the peak memory use.
+                        // The set comes from an untrusted server: endpoints must be
+                        // valid nz-numbers ('Infinity' would otherwise loop forever)
+                        // and the expansion stops at the mailbox EXISTS count - a
+                        // conforming server cannot match more messages than exist, so
+                        // a hostile range like 1:4294967295 cannot exhaust memory.
+                        // A '*' means "largest number in use": that is exactly EXISTS
+                        // for message sequence numbers, while server-sent UID sets may
+                        // not contain '*' at all (RFC 9051 section 4.1.1), so UID
+                        // parts with '*' are dropped
+                        let existsCount = () => mailbox.exists || 0;
+                        // The budget counts what the expansions added, across responses, so
+                        // a server repeating the same range cannot multiply it. The mailbox
+                        // EXISTS count is itself server-supplied and can be absurdly large, so
+                        // the budget is additionally capped at the same absolute ceiling
+                        // expandRange() uses - a hostile server cannot bypass it by inflating
+                        // EXISTS first
+                        let overBudget = () => esearchAdded >= existsCount() || results.length >= tools_js_1.EXPANDED_RANGE_LIMIT;
+                        let add = (value) => {
+                            results.push(value);
+                            esearchAdded++;
+                        };
+                        let resolveId = (part) => (part === '*' ? (options.uid ? 0 : existsCount()) : Number(part));
+                        let truncated = false;
+                        let discarded = false;
+                        sequenceSetLoop: for (let part of parsed.all.split(',')) {
+                            part = part.trim();
+                            let colon = part.indexOf(':');
+                            if (colon < 0) {
+                                let value = resolveId(part);
+                                if (!(0, tools_js_1.isValidSequenceValue)(value)) {
+                                    discarded = true;
+                                    continue;
+                                }
+                                if (overBudget()) {
+                                    truncated = true;
+                                    break;
+                                }
+                                add(value);
+                                continue;
+                            }
+                            let first = resolveId(part.substring(0, colon));
+                            let second = resolveId(part.slice(colon + 1));
+                            if (!(0, tools_js_1.isValidSequenceValue)(first) || !(0, tools_js_1.isValidSequenceValue)(second)) {
+                                discarded = true;
+                                continue;
+                            }
+                            for (let id = Math.min(first, second); id <= Math.max(first, second); id++) {
+                                if (overBudget()) {
+                                    truncated = true;
+                                    break sequenceSetLoop;
+                                }
+                                add(id);
+                            }
+                        }
+                        if (truncated || discarded) {
+                            connection.log.warn({
+                                msg: 'Invalid entries in the ESEARCH ALL result',
+                                truncated,
+                                discarded,
+                                cid: connection.id
+                            });
+                        }
+                    }
+                }
+            }
+        });
+        response.next();
+        // Sort numerically for consistent, predictable output order, then drop the duplicates
+        // in place: servers may repeat numbers across multiple untagged responses
+        results.sort((a, b) => a - b);
+        let unique = 0;
+        for (let i = 0; i < results.length; i++) {
+            if (!unique || results[i] !== results[unique - 1]) {
+                results[unique++] = results[i];
+            }
+        }
+        results.length = unique;
+        return results;
+    }
+    catch (err) {
+        return await (0, search_common_js_1.searchFailed)(connection, err);
+    }
+}
+module.exports = exports.default;
+Object.defineProperty(module.exports, 'default', { value: exports.default, enumerable: false, writable: true, configurable: true });
