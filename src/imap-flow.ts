@@ -86,6 +86,8 @@ import type {
     SearchOptions,
     SearchReturnOption,
     SequenceString,
+    SortCriteria,
+    SortOptions,
     StatusObject,
     StatusQuery,
     StoreOptions,
@@ -4405,6 +4407,40 @@ export class ImapFlow extends EventEmitter {
         }
 
         return result;
+    }
+
+    /**
+     * Sort messages from the currently opened mailbox on the server (SORT, RFC 5256). Requires
+     * the SORT capability
+     *
+     * @param order Sort key, or a list of keys in priority order. Prefix a key with "-" to sort
+     *   it in reverse, eg. `'-ARRIVAL'` for the newest first. Keys are case-insensitive
+     * @param query Query to filter the messages, matches all messages when not set
+     * @param options Sort options
+     * @returns An array of sequence or UID numbers in sorted order. `false` when the server lacks
+     *   SORT or rejected the command (a NO or BAD answer), `undefined` when no mailbox is open.
+     *   Rejects on an unknown sort key or an invalid query, and when the command could not
+     *   complete, for example because the connection closed or failed, so a failed sort is never
+     *   mistaken for an empty result
+     *
+     * @example
+     * let mailbox = await client.mailboxOpen('INBOX');
+     * // UIDs of all messages, newest first
+     * let uids = await client.sort('-ARRIVAL', {all: true}, {uid: true});
+     * // unseen messages by sender, then by date
+     * let list = await client.sort(['FROM', 'DATE'], {seen: false});
+     */
+    async sort(
+        order: SortCriteria | SortCriteria[],
+        query?: SearchObject | undefined,
+        options?: SortOptions | undefined
+    ): Promise<number[] | false | undefined> {
+        if (!this.mailbox) {
+            // no mailbox selected, nothing to do
+            return;
+        }
+
+        return (await this.run('SORT', order, query, options)) || false;
     }
 
     /**

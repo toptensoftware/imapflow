@@ -54,6 +54,7 @@ export const ImapFlowErrorCode = {
     InvalidTextValue: 'InvalidTextValue',
     InvalidSequenceSet: 'InvalidSequenceSet',
     InvalidSearchQuery: 'InvalidSearchQuery',
+    InvalidSortCriteria: 'InvalidSortCriteria',
     InvalidMessageContent: 'InvalidMessageContent',
 
     // download()

@@ -16,6 +16,7 @@ import subscribe from './commands/subscribe.js';
 import unsubscribe from './commands/unsubscribe.js';
 import store from './commands/store.js';
 import search from './commands/search.js';
+import sort from './commands/sort.js';
 import noop from './commands/noop.js';
 import expunge from './commands/expunge.js';
 import append from './commands/append.js';
@@ -61,6 +62,7 @@ const imapCommands: Map<string, CommandHandler> = new Map<string, CommandHandler
     ['UNSUBSCRIBE', unsubscribe],
     ['STORE', store],
     ['SEARCH', search],
+    ['SORT', sort],
     ['NOOP', noop],
     ['EXPUNGE', expunge],
     ['APPEND', append],

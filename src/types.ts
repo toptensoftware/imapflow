@@ -859,6 +859,21 @@ export interface SearchOptions {
     returnOptions?: SearchReturnOption[] | undefined;
 }
 
+/**
+ * A SORT key: the RFC 5256 keys, plus DISPLAYFROM and DISPLAYTO from RFC 5957 (SORT=DISPLAY).
+ * Keys are matched case-insensitively.
+ */
+export type SortKey = 'ARRIVAL' | 'CC' | 'DATE' | 'FROM' | 'SIZE' | 'SUBJECT' | 'TO' | 'DISPLAYFROM' | 'DISPLAYTO';
+
+/** A SORT key, ascending, or descending with a leading "-" (sent as `REVERSE <key>`) */
+export type SortCriteria = SortKey | Lowercase<SortKey> | `-${SortKey}` | `-${Lowercase<SortKey>}`;
+
+/** Options for sort() */
+export interface SortOptions {
+    /** If true then returns UID numbers instead of sequence numbers */
+    uid?: boolean | undefined;
+}
+
 export interface ExpungeEvent {
     /** Mailbox path */
     path: string;

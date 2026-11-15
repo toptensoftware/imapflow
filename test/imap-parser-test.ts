@@ -56,6 +56,9 @@ describe('imap-parser', () => {
             ['* SEARCH 1', [1]],
             ['* search 7 4294967295', [7, 4294967295]],
             ['* SEARCH 1 2  ', [1, 2]],
+            // a SORT answer (RFC 5256) is the same list of numbers, in the server's order
+            ['* SORT 5 3 4', [5, 3, 4]],
+            ['* sort 2', [2]],
             // not nz-numbers, the search command discards them, as it does their atoms
             ['* SEARCH 0 007 9007199254740991', [0, 7, 9007199254740991]]
         ] as const) {
@@ -68,12 +71,13 @@ describe('imap-parser', () => {
         for (const [line, numbers, modseq] of [
             ['* SEARCH 2 5 (MODSEQ 917162500)', [2, 5], '917162500'],
             ['* SEARCH 2 5 (modseq 1)  ', [2, 5], '1'],
-            ['* SEARCH 7  (MODSEQ 9223372036854775807)', [7], '9223372036854775807']
+            ['* SEARCH 7  (MODSEQ 9223372036854775807)', [7], '9223372036854775807'],
+            ['* SORT 9 4 (MODSEQ 12)', [9, 4], '12']
         ] as const) {
             it(`reads ${JSON.stringify(line)} into numbers and a MODSEQ list`, async () => {
                 assert.deepEqual(await parser(line), {
                     tag: '*',
-                    command: 'SEARCH',
+                    command: line.split(' ')[1],
                     numbers,
                     attributes: [
                         [

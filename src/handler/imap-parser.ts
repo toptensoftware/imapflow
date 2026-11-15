@@ -127,7 +127,7 @@ function readSearchResponse(str: string): { numbers: number[]; attributes?: Imap
  * @returns A promise that resolves to a parsed response object with `tag` (the IMAP tag, e.g. "*",
  *   "+", or a command tag like "A1"), `command` (the IMAP command or response name, e.g. "OK",
  *   "FETCH"), `attributes` (parsed attributes of the response), `numbers` (the numbers of an
- *   untagged SEARCH response that holds nothing else, instead of `attributes`) and
+ *   untagged SEARCH or SORT response that holds nothing else, instead of `attributes`) and
  *   `nullBytesRemoved` (number of leading null bytes removed, if any).
  */
 export default async function parser(command: Buffer | string, options?: ParserOptions | undefined): Promise<ImapResponse> {
@@ -178,7 +178,8 @@ export default async function parser(command: Buffer | string, options?: ParserO
             response.command += ' ' + (await parserInstance.getElement(imapFormalSyntax.command()));
         }
 
-        if (response.tag === '*' && (response.command || '').toUpperCase() === 'SEARCH') {
+        // a SORT answer (RFC 5256) is the same list of numbers, just in the server's order
+        if (response.tag === '*' && ['SEARCH', 'SORT'].includes((response.command || '').toUpperCase())) {
             const search = readSearchResponse(parserInstance.remainder);
             if (search) {
                 return Object.assign(response, search);

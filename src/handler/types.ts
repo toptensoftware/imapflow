@@ -44,7 +44,7 @@ export interface ImapResponse {
     /** Parsed attributes of the response */
     attributes?: ImapAttributeList | undefined;
     /**
-     * The numbers of an untagged SEARCH response (`* SEARCH 2 5 9`), set when the line holds
+     * The numbers of an untagged SEARCH or SORT response (`* SEARCH 2 5 9`), set when the line holds
      * nothing else but a CONDSTORE `(MODSEQ n)` list, which is then the only entry of
      * `attributes`, see parser()
      */

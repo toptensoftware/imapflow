@@ -1,6 +1,6 @@
-import { hasCapability, isValidSequenceValue, isServerRefusal, EXPANDED_RANGE_LIMIT, reportCommandError, getSelectedMailbox } from '../tools.js';
-import { searchCompiler } from '../search-compiler.js';
+import { hasCapability, isValidSequenceValue, EXPANDED_RANGE_LIMIT, getSelectedMailbox } from '../tools.js';
 import { parseEsearchResponse } from './esearch-parser.js';
+import { collectResponseNumbers, compileSearchQuery, searchFailed } from './search-common.js';
 import type { ImapFlow } from '../imap-flow.js';
 import type { ImapFlowError } from '../errors.js';
 import type { ImapAttributeList, ImapAttributeNode, ImapCompileNode, ImapResponse } from '../handler/types.js';
@@ -21,24 +21,6 @@ const stripEsearchPrefix = (attrs: ImapAttributeList): ImapAttributeList => {
     if (attrs[start] && typeof attrs[start]!.value === 'string' && (attrs[start]!.value as string).toUpperCase() === 'UID') start++;
     return attrs.slice(start);
 };
-
-/**
- * The failure path of both SEARCH forms. A NO or BAD answer is the server refusing the search,
- * which resolves false. Any other failure means the command never completed (the connection
- * closed or failed, the answer could not be read, the server throttled it), and is rethrown:
- * resolving false would read as "nothing matched" to a caller that treats a non-array result as
- * an empty one.
- *
- * @param connection - IMAP connection instance
- * @param err - The command error
- */
-async function searchFailed(connection: ImapFlow, err: ImapFlowError): Promise<false> {
-    await reportCommandError(connection, err);
-    if (isServerRefusal(err)) {
-        return false;
-    }
-    throw err;
-}
 
 /**
  * Searches for messages matching the specified criteria.
@@ -65,19 +47,8 @@ export default async function search(
 
     options = options || {};
 
-    let attributes: ImapCompileNode[];
-
-    // Three query branches:
-    // 1. Empty/truthy/all-only query -> use IMAP "SEARCH ALL" to match every message
-    // 2. Non-empty object -> compile into IMAP SEARCH criteria via searchCompiler
-    // 3. Anything else (unexpected type) -> bail out with false
-    if (!query || query === true || (typeof query === 'object' && (!Object.keys(query).length || (Object.keys(query).length === 1 && query.all)))) {
-        // search for all messages
-        attributes = [{ type: 'ATOM', value: 'ALL' }];
-    } else if (query && typeof query === 'object') {
-        // normal query
-        attributes = searchCompiler(connection, query);
-    } else {
+    const attributes = compileSearchQuery(connection, query);
+    if (!attributes) {
         return false;
     }
 
@@ -138,51 +109,7 @@ export default async function search(
                     if (!untagged) {
                         return;
                     }
-                    // A line of plain numbers arrives already read into an array (see parser()),
-                    // anything else as attribute tokens
-                    let numbers = untagged.numbers;
-                    let attributes = untagged.attributes || [];
-                    let count = numbers ? numbers.length : attributes.length;
-                    if (count) {
-                        // The first array of numbers becomes the result itself, checked in place,
-                        // so a large answer is not held twice
-                        let target = numbers && !results.length ? numbers : results;
-                        let size = target === results ? results.length : 0;
-                        let truncated = false;
-                        let discarded = false;
-                        for (let i = 0; i < count; i++) {
-                            // The result set is server-controlled and accumulated across
-                            // responses, so stop at the same absolute ceiling expandRange()
-                            // uses - a server streaming SEARCH responses could otherwise
-                            // grow the set until the process runs out of memory
-                            /* c8 ignore next 4 */ // reaching the ceiling needs 2^24 accumulated results, which no unit test can produce in reasonable time
-                            if (size >= EXPANDED_RANGE_LIMIT) {
-                                truncated = true;
-                                break;
-                            }
-                            let attribute = attributes[i];
-                            let value = numbers ? numbers[i] : attribute && typeof attribute.value === 'string' ? Number(attribute.value) : NaN;
-                            // Same nz-number check the ESEARCH branch below applies. isNaN()
-                            // is not enough: it passes '1e400' (Infinity), '-3' and '2.5', and
-                            // a single one of those makes the sequence set compiled from this
-                            // result set invalid, failing the caller's whole follow-up command
-                            if (!isValidSequenceValue(value)) {
-                                discarded = true;
-                                continue;
-                            }
-                            target[size++] = value;
-                        }
-                        target.length = size;
-                        results = target;
-                        if (truncated || discarded) {
-                            connection.log.warn({
-                                msg: 'Invalid entries in the SEARCH result',
-                                truncated,
-                                discarded,
-                                cid: connection.id
-                            });
-                        }
-                    }
+                    results = collectResponseNumbers(connection, results, untagged, 'SEARCH');
                 },
 
                 // IMAP4rev2 servers answer even a plain SEARCH with an untagged

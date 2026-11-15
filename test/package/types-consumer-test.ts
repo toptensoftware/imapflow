@@ -248,6 +248,8 @@ import type {
     FetchOptions,
     SearchObject,
     SearchOptions,
+    SortCriteria,
+    SortOptions,
     ListOptions,
     StatusQuery,
     StoreOptions,
@@ -312,6 +314,13 @@ export async function run(): Promise<void> {
     await client.getMailboxLock('INBOX', lockOptions);
     await client.list(listOptions);
     await client.search(search, searchOptions);
+    const sortOrder: SortCriteria[] = ['-ARRIVAL', 'SUBJECT'];
+    const sortOptions: SortOptions = { uid: maybeBoolean };
+    const sorted: number[] | false | undefined = await client.sort(sortOrder, search, sortOptions);
+    if (sorted) {
+        sorted.forEach(n => n.toFixed());
+    }
+    await client.sort('DATE');
     await client.fetchAll('1:*', fetchQuery, fetchOptions);
     await client.messageFlagsAdd('1', ['\\\\Seen'], storeOptions);
     await client.download('1', undefined, downloadOptions);
@@ -330,6 +339,7 @@ type _FetchQueryObject = NoneMissing<MissingUndefined<FetchQueryObject>>;
 type _FetchOptions = NoneMissing<MissingUndefined<FetchOptions>>;
 type _SearchObject = NoneMissing<MissingUndefined<SearchObject>>;
 type _SearchOptions = NoneMissing<MissingUndefined<SearchOptions>>;
+type _SortOptions = NoneMissing<MissingUndefined<SortOptions>>;
 type _ListOptions = NoneMissing<MissingUndefined<ListOptions>>;
 type _StatusQuery = NoneMissing<MissingUndefined<StatusQuery>>;
 type _StoreOptions = NoneMissing<MissingUndefined<StoreOptions>>;
