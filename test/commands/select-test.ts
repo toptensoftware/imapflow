@@ -180,6 +180,53 @@ describe('commands/select', () => {
         assert.ok(attrsStr.includes('QRESYNC'));
         assert.equal((result as any).qresync, true);
     });
+    // QRESYNC known-uids (RFC 7162 section 3.2.5)
+    let qresyncArgs = async (options: any): Promise<any> => {
+        let execAttrs: any = null;
+        const connection = createMockConnection({
+            state: 2,
+            enabled: new Set(['QRESYNC']),
+            folders: new Map([['INBOX', { path: 'INBOX' }]]),
+            run: async () => [],
+            exec: async (cmd: any, attrs: any) => {
+                execAttrs = attrs;
+                return { next: () => {}, response: { attributes: [] } };
+            },
+            emit: () => {}
+        });
+        await selectCommand(connection, 'INBOX', options);
+        // [path, [QRESYNC, [params]]]
+        let qresync = execAttrs.find((attr: any) => Array.isArray(attr) && attr[0]?.value === 'QRESYNC');
+        return qresync ? qresync[1] : null;
+    };
+    it('Commands: select QRESYNC sends knownUids as the third parameter', async () => {
+        let params = await qresyncArgs({ changedSince: '12345', uidValidity: 67890, knownUids: '1:5,7' });
+        assert.deepEqual(params, [
+            { type: 'ATOM', value: '67890' },
+            { type: 'ATOM', value: '12345' },
+            { type: 'SEQUENCE', value: '1:5,7' }
+        ]);
+    });
+    it('Commands: select QRESYNC without knownUids sends two parameters', async () => {
+        let params = await qresyncArgs({ changedSince: '12345', uidValidity: 67890 });
+        assert.deepEqual(params, [
+            { type: 'ATOM', value: '67890' },
+            { type: 'ATOM', value: '12345' }
+        ]);
+    });
+    it('Commands: select ignores knownUids without changedSince', async () => {
+        let params = await qresyncArgs({ uidValidity: 67890, knownUids: '1:5,7' });
+        assert.equal(params, null);
+    });
+    for (const knownUids of ['', '*', '1:*', '$', '0', '0:5', '1,,2', '1 2', '1:5) X', 'abc', '99999999999']) {
+        it(`Commands: select QRESYNC does not send an invalid knownUids ${JSON.stringify(knownUids)}`, async () => {
+            let params = await qresyncArgs({ changedSince: '12345', uidValidity: 67890, knownUids });
+            assert.deepEqual(params, [
+                { type: 'ATOM', value: '67890' },
+                { type: 'ATOM', value: '12345' }
+            ]);
+        });
+    }
     for (const uidValidity of [67890, '67890']) {
         it(`Commands: select QRESYNC stays valid for a ${typeof uidValidity} uidValidity`, async () => {
             const connection = createMockConnection({

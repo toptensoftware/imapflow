@@ -7,6 +7,7 @@ import {
     MAX_UINT32_DIGITS,
     emitSafe,
     isAuthenticatedState,
+    isValidUidSet,
     reportCommandError
 } from '../tools.js';
 import type { ImapFlow } from '../imap-flow.js';
@@ -143,13 +144,17 @@ export default async function select(
         let uidValidity = options.uidValidity !== undefined ? parseBigIntValue(String(options.uidValidity)) : false;
         let extraArgs: ImapCompileNode[] = [];
         if (connection.enabled.has('QRESYNC') && options.changedSince && uidValidity) {
-            extraArgs.push([
-                { type: 'ATOM', value: 'QRESYNC' },
-                [
-                    { type: 'ATOM', value: uidValidity.toString() },
-                    { type: 'ATOM', value: options.changedSince.toString() }
-                ]
-            ]);
+            let qresyncParams: ImapCompileNode[] = [
+                { type: 'ATOM', value: uidValidity.toString() },
+                { type: 'ATOM', value: options.changedSince.toString() }
+            ];
+            // Optional known-uids (RFC 7162 section 3.2.5): the UIDs the client still has, so the
+            // server can leave out VANISHED UIDs it never knew about. Only explicit UIDs are allowed
+            // ("*" is not); an unusable value is left out rather than failing the SELECT.
+            if (isValidUidSet(options.knownUids)) {
+                qresyncParams.push({ type: 'SEQUENCE', value: options.knownUids });
+            }
+            extraArgs.push([{ type: 'ATOM', value: 'QRESYNC' }, qresyncParams]);
             map.qresync = true;
         }
 

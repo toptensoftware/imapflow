@@ -1265,6 +1265,20 @@ describe('tools', () => {
     });
 
     // ============================================
+    // isValidUidSet: QRESYNC known-uids (RFC 7162 section 3.2.5)
+    // ============================================
+    it('Tools: isValidUidSet accepts explicit UIDs and ranges', () => {
+        for (let value of ['1', '1:5', '1:5,7', '9:7,12', '4294967295']) {
+            assert.equal(tools.isValidUidSet(value), true, value);
+        }
+    });
+    it('Tools: isValidUidSet rejects anything else', () => {
+        for (let value of [undefined, null, 5, '', '*', '1:*', '$', '0', '1:0', '4294967296', '1,,2', '1:2:3', ' 1', '1e2', 'a']) {
+            assert.equal(tools.isValidUidSet(value), false, String(value));
+        }
+    });
+
+    // ============================================
     // formatMessageResponse: PREVIEW (RFC 8970)
     // ============================================
     it('Tools: formatMessageResponse maps PREVIEW to preview', async () => {

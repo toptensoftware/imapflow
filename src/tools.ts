@@ -1660,6 +1660,25 @@ export function isValidSequenceValue(value: unknown): value is number {
 }
 
 /**
+ * Checks that a value is a UID set made of explicit numbers only: comma-separated
+ * nz-numbers or "n:m" ranges, with no "*" and no "$". This is the shape RFC 7162
+ * requires for the QRESYNC known-uids parameter.
+ *
+ * @param value - Value to check
+ * @returns True if the value is a non-empty set of valid UIDs and UID ranges
+ */
+export function isValidUidSet(value: unknown): value is string {
+    if (typeof value !== 'string' || !value) {
+        return false;
+    }
+    let isUid = (part: string): boolean => isDecimalString(part, MAX_UINT32_DIGITS) && isValidSequenceValue(Number(part));
+    return value.split(',').every(entry => {
+        let parts = entry.split(':');
+        return parts.length <= 2 && parts.every(isUid);
+    });
+}
+
+/**
  * Checks that an untrusted response value is a pure decimal digit run no longer than
  * the given bound.
  *

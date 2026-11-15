@@ -813,6 +813,8 @@ export interface MailboxOpenOptions {
     changedSince?: bigint | number | string | undefined;
     /** QRESYNC (RFC 7162): the UIDVALIDITY known from the previous session, required with `changedSince` */
     uidValidity?: bigint | number | string | undefined;
+    /** QRESYNC (RFC 7162 section 3.2.5): optional UID set (like `"1:5,7"`, no `*`) of the messages the client still knows about, so the server only reports expunges for those. Used only together with `changedSince` and `uidValidity`; an invalid set is not sent */
+    knownUids?: string | undefined;
 }
 
 export interface IdleOptions {
