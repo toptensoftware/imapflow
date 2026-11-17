@@ -1,6 +1,6 @@
 {
     "name": "imapflow",
-    "version": "2.11.0",
+    "version": "2.11.0-hitch.2",
     "description": "IMAP Client for Node",
     "type": "module",
     "main": "./dist/cjs/imap-flow.js",
@@ -56,7 +56,6 @@
         "format:check": "prettier --check \"**/*.{js,cjs,ts,json,md,yml,yaml}\"",
         "lint": "npm run typecheck && eslint .",
         "lint:fix": "eslint . --fix",
-        "prepare": "npm run build",
         "update": "rm -rf node_modules package-lock.json && ncu -u && npm install",
         "test:james": "bash test/integration/run-james-tests.sh"
     },
