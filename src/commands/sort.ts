@@ -67,6 +67,12 @@ export default async function sort(
     if (!attributes) {
         return false;
     }
+    // The search compiler puts CHARSET UTF-8 in front of non-ASCII criteria when UTF8=ACCEPT is
+    // not enabled. SORT names its charset itself (below), and a second one is answered with BAD
+    const first = attributes[0];
+    if (first && typeof first === 'object' && 'type' in first && first.type === 'ATOM' && first.value === 'CHARSET') {
+        attributes.splice(0, 2);
+    }
 
     let results: number[] = [];
     try {

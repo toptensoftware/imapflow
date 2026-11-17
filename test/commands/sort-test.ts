@@ -70,6 +70,27 @@ describe('commands/sort', () => {
         assert.deepEqual(sent.attrs.slice(2), searchCompiler(connection, query));
         assert.deepEqual(sent.attrs[2], { type: 'ATOM', value: 'UNSEEN' });
     });
+    it('Commands: sort names the charset once for a non-ASCII value without UTF8=ACCEPT', async () => {
+        const { connection, sent } = sortConnection();
+        await sortCommand(connection, '-ARRIVAL', { subject: 'Ünïcödé' }, { uid: true });
+        assert.equal(sent.cmd, 'UID SORT');
+        assert.deepEqual(sent.attrs.slice(1), [
+            { type: 'ATOM', value: 'UTF-8' },
+            { type: 'ATOM', value: 'SUBJECT' },
+            { type: 'LITERAL', value: Buffer.from('Ünïcödé') }
+        ]);
+    });
+    it('Commands: sort with UTF8=ACCEPT enabled sends a non-ASCII value unchanged', async () => {
+        const { connection, sent } = sortConnection();
+        connection.enabled.add('UTF8=ACCEPT');
+        await sortCommand(connection, '-ARRIVAL', { and: [{ subject: 'Ünïcödé' }, { seen: false }] }, { uid: true });
+        assert.deepEqual(sent.attrs.slice(1), [
+            { type: 'ATOM', value: 'UTF-8' },
+            { type: 'ATOM', value: 'SUBJECT' },
+            { type: 'LITERAL', value: Buffer.from('Ünïcödé') },
+            { type: 'ATOM', value: 'UNSEEN' }
+        ]);
+    });
     it('Commands: sort returns the numbers in server order', async () => {
         const { connection } = sortConnection(async opts => {
             // plain numbers, as the parser reads them
