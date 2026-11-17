@@ -520,6 +520,8 @@ export interface SearchObject {
     not?: SearchObject | undefined;
     /** An array of 2 or more SearchObject objects. At least one of these must match */
     or?: SearchObject[] | undefined;
+    /** An array of 1 or more SearchObject objects. All of these must match (lets a key such as `not`, `or` or `from` be used more than once) */
+    and?: SearchObject[] | undefined;
     /** Gmail raw search query (only for Gmail) */
     gmraw?: string | undefined;
     /** Gmail raw search query (alias for gmraw) */

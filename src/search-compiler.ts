@@ -166,9 +166,10 @@ export const searchCompiler = (connection: ImapFlow, query: SearchObject): Searc
     /**
      * Recursively walks through the query object and builds IMAP attributes.
      * @param params - Query parameters to process
+     * @param nested - True for an operand of NOT, OR or AND, false for the query itself
      */
-    const walk = (params: { [key: string]: any }): void => {
-        // Compiles one NOT or OR operand, which the caller has already put its operator in
+    const walk = (params: { [key: string]: any }, nested = false): void => {
+        // Compiles one NOT, OR or AND operand, which the caller has already put its operator in
         // front of. An operand with several keys is wrapped in a sub-array so the IMAP compiler
         // emits parentheses around it, as the operator takes a single search-key
         // (RFC 3501 Section 6.4.4). An operand that compiles to nothing (an invalid date, an
@@ -177,7 +178,7 @@ export const searchCompiler = (connection: ImapFlow, query: SearchObject): Searc
         let walkOperand = (operator: string, obj: unknown): void => {
             let startIdx = attributes.length;
             if (obj && typeof obj === 'object') {
-                walk(obj);
+                walk(obj, true);
             }
             if (attributes.length === startIdx) {
                 fail('InvalidSearchQuery', `Search operand for ${operator} does not include any usable search criteria`);
@@ -528,6 +529,28 @@ export const searchCompiler = (connection: ImapFlow, query: SearchObject): Searc
                         };
 
                         walkOrTree(genOrTree(params[term]));
+                    }
+                    break;
+
+                // AND operator (non-standard key): every operand must match. A query object
+                // has unique keys, so this is how the same key (NOT, OR, FROM, ...) is used more
+                // than once. The operands are listed one after the other, which IMAP reads as AND.
+                // As an operand itself the list is parenthesised, so NOT or OR applies to all of it
+                case 'AND':
+                    {
+                        let list = params[term];
+                        if (!list) {
+                            break;
+                        }
+                        if (!Array.isArray(list) || !list.length) {
+                            fail('InvalidSearchQuery', 'Search value for AND must be a non-empty array of search queries');
+                        }
+                        let startIdx = attributes.length;
+                        list.forEach((entry: unknown) => walkOperand('AND', entry));
+                        if (nested && list.length > 1) {
+                            let subAttrs = attributes.splice(startIdx);
+                            attributes.push(subAttrs);
+                        }
                     }
                     break;
 

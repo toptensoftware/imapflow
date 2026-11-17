@@ -789,6 +789,49 @@ describe('search-compiler', () => {
             ]
         ]);
     });
+    // ============================================
+    // AND operator
+    // ============================================
+    let compileAnd = async (query: any) =>
+        (await imapCompiler({ tag: 'A', command: 'SEARCH', attributes: searchCompiler(createMockConnection(), query) as any })).toString();
+    it('Search Compiler: AND lists its operands one after the other', async () => {
+        assert.equal(await compileAnd({ and: [{ subject: 'a' }, { subject: 'b' }] }), 'A SEARCH SUBJECT a SUBJECT b');
+        assert.equal(await compileAnd({ and: [{ seen: true }] }), 'A SEARCH SEEN');
+    });
+    it('Search Compiler: AND repeats keys a single query object can not', async () => {
+        assert.equal(
+            await compileAnd({ and: [{ not: { from: 'a' } }, { not: { from: 'b' } }, { or: [{ subject: 'c' }, { body: 'c' }] }] }),
+            'A SEARCH NOT FROM a NOT FROM b OR SUBJECT c BODY c'
+        );
+    });
+    it('Search Compiler: AND parenthesises operands with several keys', async () => {
+        assert.equal(await compileAnd({ and: [{ seen: true, flagged: true }, { from: 'a' }] }), 'A SEARCH (SEEN FLAGGED) FROM a');
+    });
+    it('Search Compiler: AND is parenthesised as a NOT or OR operand', async () => {
+        assert.equal(await compileAnd({ not: { and: [{ from: 'a' }, { from: 'b' }] } }), 'A SEARCH NOT (FROM a FROM b)');
+        assert.equal(await compileAnd({ or: [{ and: [{ from: 'a' }, { from: 'b' }] }, { seen: true }] }), 'A SEARCH OR (FROM a FROM b) SEEN');
+        // a single operand is a single search key already
+        assert.equal(await compileAnd({ not: { and: [{ from: 'a' }] } }), 'A SEARCH NOT FROM a');
+    });
+    it('Search Compiler: nested AND', async () => {
+        assert.equal(await compileAnd({ and: [{ and: [{ from: 'a' }, { from: 'b' }] }, { seen: true }] }), 'A SEARCH (FROM a FROM b) SEEN');
+        assert.equal(await compileAnd({ not: { and: [{ and: [{ from: 'a' }, { from: 'b' }] }] } }), 'A SEARCH NOT (FROM a FROM b)');
+    });
+    it('Search Compiler: AND combines with other keys', async () => {
+        assert.equal(await compileAnd({ and: [{ from: 'a' }, { from: 'b' }], seen: false }), 'A SEARCH FROM a FROM b UNSEEN');
+    });
+    it('Search Compiler: AND without usable operands throws', () => {
+        let connection = createMockConnection();
+        for (let and of [[], [{}], [{ seen: true }, { before: new Date('x') }], [{ seen: true }, null], ['seen'], 'seen', { seen: true }]) {
+            assert.throws(
+                () => searchCompiler(connection, { and, from: 'a' } as any),
+                (err: any) => err.code === 'InvalidSearchQuery' && /AND/.test(err.message),
+                JSON.stringify(and)
+            );
+        }
+        // an absent operand list is ignored, as for OR and NOT
+        assert.deepEqual(searchCompiler(connection, { and: undefined, seen: true } as any), [{ type: 'ATOM', value: 'SEEN' }]);
+    });
     it('Search Compiler: KEYWORD with standard flag', () => {
         let connection = createMockConnection();
         let compiled = searchCompiler(connection, { keyword: '\\Seen' });
