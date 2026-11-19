@@ -876,6 +876,57 @@ export interface SortOptions {
     uid?: boolean | undefined;
 }
 
+/**
+ * A NOTIFY event (RFC 5465 section 5, plus the METADATA events of RFC 5464). Matched
+ * case-insensitively
+ */
+export type NotifyEvent =
+    | 'MessageNew'
+    | 'MessageExpunge'
+    | 'FlagChange'
+    | 'AnnotationChange'
+    | 'MailboxName'
+    | 'SubscriptionChange'
+    | 'MailboxMetadataChange'
+    | 'ServerMetadataChange';
+
+/**
+ * The mailboxes a NOTIFY event group covers, other than the selected one: every personal
+ * mailbox, every mailbox that can receive new mail, the subscribed ones, the mailboxes under
+ * the given ones (each included), or exactly the given mailboxes
+ */
+export type NotifyFilter = 'personal' | 'inboxes' | 'subscribed' | { subtree: string | string[] } | { mailboxes: string | string[] };
+
+/** The events wanted for the selected mailbox, see {@link NotifySpec} */
+export interface NotifySelectedSpec {
+    /** Events to report, an empty list sends NONE (no events for the selected mailbox) */
+    events: NotifyEvent[];
+    /** If true then sends SELECTED-DELAYED: expunges are only reported at the next command that allows them */
+    delayed?: boolean | undefined;
+}
+
+/** The events wanted for a set of mailboxes, see {@link NotifySpec} */
+export interface NotifyMailboxesSpec {
+    /** Which mailboxes the events are for */
+    filter: NotifyFilter;
+    /** Events to report, an empty list sends NONE (no events for these mailboxes) */
+    events: NotifyEvent[];
+}
+
+/**
+ * What notify() asks the server to report (`NOTIFY SET`, RFC 5465). Changes to the selected
+ * mailbox arrive as the usual `exists`, `expunge` and `flags` events, changes to other mailboxes
+ * as `status` events
+ */
+export interface NotifySpec {
+    /** If true then the server first sends a STATUS for every matching mailbox that is not selected */
+    status?: boolean | undefined;
+    /** Events for the selected mailbox */
+    selected?: NotifySelectedSpec | undefined;
+    /** Events for other mailboxes, one entry per event group */
+    mailboxes?: NotifyMailboxesSpec[] | undefined;
+}
+
 export interface ExpungeEvent {
     /** Mailbox path */
     path: string;

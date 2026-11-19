@@ -250,6 +250,9 @@ import type {
     SearchOptions,
     SortCriteria,
     SortOptions,
+    NotifySpec,
+    NotifySelectedSpec,
+    NotifyMailboxesSpec,
     ListOptions,
     StatusQuery,
     StoreOptions,
@@ -321,6 +324,18 @@ export async function run(): Promise<void> {
         sorted.forEach(n => n.toFixed());
     }
     await client.sort('DATE');
+    const notifySpec: NotifySpec = {
+        status: maybeBoolean,
+        selected: { events: ['MessageNew', 'FlagChange'], delayed: maybeBoolean },
+        mailboxes: [
+            { filter: 'personal', events: ['MessageExpunge'] },
+            { filter: { subtree: ['Archive'] }, events: [] },
+            { filter: { mailboxes: 'INBOX' }, events: ['MailboxName'] }
+        ]
+    };
+    const notified: boolean = await client.notify(notifySpec);
+    await client.notify(null);
+    void notified;
     await client.fetchAll('1:*', fetchQuery, fetchOptions);
     await client.messageFlagsAdd('1', ['\\\\Seen'], storeOptions);
     await client.download('1', undefined, downloadOptions);
@@ -340,6 +355,9 @@ type _FetchOptions = NoneMissing<MissingUndefined<FetchOptions>>;
 type _SearchObject = NoneMissing<MissingUndefined<SearchObject>>;
 type _SearchOptions = NoneMissing<MissingUndefined<SearchOptions>>;
 type _SortOptions = NoneMissing<MissingUndefined<SortOptions>>;
+type _NotifySpec = NoneMissing<MissingUndefined<NotifySpec>>;
+type _NotifySelectedSpec = NoneMissing<MissingUndefined<NotifySelectedSpec>>;
+type _NotifyMailboxesSpec = NoneMissing<MissingUndefined<NotifyMailboxesSpec>>;
 type _ListOptions = NoneMissing<MissingUndefined<ListOptions>>;
 type _StatusQuery = NoneMissing<MissingUndefined<StatusQuery>>;
 type _StoreOptions = NoneMissing<MissingUndefined<StoreOptions>>;

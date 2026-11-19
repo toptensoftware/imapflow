@@ -81,6 +81,7 @@ import type {
     MessageRangeOptions,
     NamespaceObject,
     NamespacesObject,
+    NotifySpec,
     QuotaResponse,
     SearchObject,
     SearchOptions,
@@ -639,6 +640,13 @@ export class ImapFlow extends EventEmitter {
     idling: boolean;
 
     /**
+     * Whether a `NOTIFY SET` is active on this session, so a new one is preceded by `NOTIFY NONE`
+     * (see notify()). Cleared by `NOTIFY NONE`, a NOTIFICATIONOVERFLOW and the connection closing
+     * @internal
+     */
+    notifySet: boolean;
+
+    /**
      * Data of the application's own, kept with the client and never read by ImapFlow. Starts as
      * the `context` option; cast it to the type the application stores there
      */
@@ -982,6 +990,8 @@ export class ImapFlow extends EventEmitter {
         this.currentSelectCommand = false;
 
         this.idling = false;
+
+        this.notifySet = false;
 
         this.context = this.options.context;
         this.connectedAt = null;
@@ -3579,6 +3589,7 @@ export class ImapFlow extends EventEmitter {
                 closedMailbox = this.mailbox;
                 this.mailbox = false;
                 this.currentSelectCommand = false;
+                this.notifySet = false;
                 if (!this.options.verifyOnly) {
                     this.authenticated = false;
                 }
@@ -4407,6 +4418,35 @@ export class ImapFlow extends EventEmitter {
         }
 
         return result;
+    }
+
+    /**
+     * Sets which mailbox changes the server reports without being asked (NOTIFY, RFC 5465), or
+     * turns that off with `null`. Requires the NOTIFY capability. Changes to the selected mailbox
+     * arrive as `exists`, `expunge` and `flags` events, changes to other mailboxes as `status`
+     * events. The server only delivers them reliably while the connection idles (or runs
+     * commands), so keep IDLE running. A `notificationOverflow` event means the server gave up
+     * and turned notifications off: call notify() again and resynchronize.
+     *
+     * Replacing an active spec sends `NOTIFY NONE` before the new `NOTIFY SET`, as Dovecot
+     * silently drops the reports for other mailboxes on every second consecutive SET
+     *
+     * @param spec What to report, or `null` to turn notifications off (`NOTIFY NONE`)
+     * @returns `true` when the server accepted it, `false` when the server lacks NOTIFY or the
+     *   connection is not authenticated. Rejects with code `InvalidNotifySpec` before sending
+     *   anything when the spec is not usable, and with the command error when the server refused
+     *   it (`serverResponseCode` names the reason, eg. `BADEVENT`)
+     *
+     * @example
+     * await client.notify({
+     *     status: true,
+     *     selected: { events: ['MessageNew', 'MessageExpunge', 'FlagChange'] },
+     *     mailboxes: [{ filter: 'personal', events: ['MessageNew', 'MessageExpunge', 'FlagChange'] }]
+     * });
+     * client.on('status', status => console.log(status.path, status.unseen));
+     */
+    async notify(spec: NotifySpec | null): Promise<boolean> {
+        return (await this.run('NOTIFY', spec)) || false;
     }
 
     /**

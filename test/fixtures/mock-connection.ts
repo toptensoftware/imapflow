@@ -69,6 +69,7 @@ export const createMockConnection = (overrides: Record<string, unknown> = {}): M
         // dead connection (idle.js) need this to look established.
         socket: { destroyed: false },
         currentSelectCommand: false,
+        notifySet: false,
         skipListSubscribedArg: false,
         skipListStatusArgs: false,
         skipListAuxArgs: false,
