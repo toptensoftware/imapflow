@@ -1102,6 +1102,17 @@ export interface ImapFlowEvents {
     response: [response: ResponseEvent];
     /** The server sent an ALERT: text meant for the user, such as a planned shutdown or an account problem */
     alert: [alert: AlertEvent];
+    /**
+     * The server reported a mailbox's status without being asked, as it does under notify() for
+     * mailboxes other than the selected one. Holds only the items the server sent (eg. just
+     * `unseen` and `highestModseq` after a flag change)
+     */
+    status: [status: StatusObject];
+    /**
+     * The server could not keep up with the notifications set by notify() and turned them off
+     * (`NOTIFICATIONOVERFLOW`, RFC 5465): call notify() again and resynchronize every mailbox
+     */
+    notificationOverflow: [];
 }
 
 /** Where {@link ImapTransport} connects to, and the `tls` options of the client */

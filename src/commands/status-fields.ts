@@ -1,5 +1,7 @@
-import { parseBigIntValue, parseUintValue, MAX_UINT32_DIGITS } from '../tools.js';
-import type { ImapAttributeList } from '../handler/types.js';
+import { parseBigIntValue, parseUintValue, MAX_UINT32_DIGITS, decodePath, normalizePath } from '../tools.js';
+import type { ImapAttributeList, ImapAttributeNode, ImapResponse } from '../handler/types.js';
+import type { ImapFlow } from '../imap-flow.js';
+import type { StatusObject } from '../types.js';
 
 /**
  * A parsed STATUS value: counts and sizes as numbers, UIDVALIDITY and HIGHESTMODSEQ as BigInts
@@ -74,4 +76,30 @@ export const parseStatusList = (list: ImapAttributeList, onField: (key: string, 
 
         onField(field.key, value);
     });
+};
+
+/**
+ * Parses an untagged STATUS response (`* STATUS <mailbox> (<item> <value> ...)`) into a status
+ * object with the decoded, normalized mailbox path and every usable item. Shared by the STATUS
+ * command, LIST-STATUS and the unsolicited STATUS responses of NOTIFY.
+ *
+ * @param connection - IMAP connection instance
+ * @param untagged - The parsed STATUS response
+ * @returns The status object (its path is empty when the response named no mailbox), or false
+ *   when the response has no item list
+ */
+export const parseStatusResponse = (connection: ImapFlow, untagged: ImapResponse): StatusObject | false => {
+    const attributes = (untagged && untagged.attributes) || [];
+    const list = Array.isArray(attributes[1]) ? attributes[1] : false;
+    if (!list) {
+        return false;
+    }
+    const name = (attributes[0] && (attributes[0] as ImapAttributeNode).value) || '';
+    const status: StatusObject & { [key: string]: unknown } = {
+        path: typeof name === 'string' && name ? normalizePath(connection, decodePath(connection, name)) : ''
+    };
+    parseStatusList(list, (key, value) => {
+        status[key] = value;
+    });
+    return status;
 };

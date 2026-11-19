@@ -11,7 +11,7 @@ import {
     MAX_COLLECTED_RESPONSES
 } from '../tools.js';
 import { createImapError } from '../errors.js';
-import { parseStatusList } from './status-fields.js';
+import { parseStatusResponse } from './status-fields.js';
 import { specialUse, type SpecialUseSource as SpecialUseFlagSource } from '../special-use.js';
 import type { ImapFlow } from '../imap-flow.js';
 import type { ImapFlowError } from '../errors.js';
@@ -297,21 +297,11 @@ export default async function list(
                     // Inline STATUS response from LIST-STATUS extension (RFC 5819).
                     // Parses alternating key-value pairs (i % 2 pattern).
                     STATUS: async (untagged: ImapResponse) => {
-                        let statusPath = normalizePath(
-                            connection,
-                            decodePath(connection, ((untagged.attributes![0] && untagged.attributes![0].value) || '') as string)
-                        );
-                        let statusList = untagged.attributes && Array.isArray(untagged.attributes[1]) ? untagged.attributes[1] : false;
-                        if (!statusList || !statusPath) {
+                        let status = parseStatusResponse(connection, untagged);
+                        if (!status || !status.path) {
                             return;
                         }
-
-                        let map: StatusObject = { path: statusPath };
-                        parseStatusList(statusList, (key: string, value: unknown) => {
-                            (map as any)[key] = value;
-                        });
-
-                        statusMap.set(statusPath, map);
+                        statusMap.set(status.path, status);
                     }
                 }
             });

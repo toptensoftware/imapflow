@@ -8,7 +8,7 @@ import {
     getSelectedMailbox,
     logConnectionError
 } from '../tools.js';
-import { parseStatusList } from './status-fields.js';
+import { parseStatusResponse } from './status-fields.js';
 import type { ImapFlow, ExecResponse } from '../imap-flow.js';
 import { createImapError, type ImapFlowError } from '../errors.js';
 import type { ImapCompileNode, ImapResponse } from '../handler/types.js';
@@ -83,22 +83,35 @@ export default async function status(connection: ImapFlow, path: string | string
                 // STATUS response: * STATUS <mailbox> (<key> <value> <key> <value> ...)
                 // Parsed as alternating key-value pairs (i % 2 pattern).
                 STATUS: async (untagged: ImapResponse) => {
+                    let status = parseStatusResponse(connection, untagged);
+                    if (!status) {
+                        return;
+                    }
+                    if (status.path && status.path !== path) {
+                        // Another mailbox's STATUS, sent unsolicited under NOTIFY: it belongs to
+                        // the connection-wide handler (a `status` event), not to this result
+                        let globalHandler = connection.untaggedHandlers && connection.untaggedHandlers.STATUS;
+                        if (globalHandler) {
+                            await globalHandler(untagged);
+                        }
+                        return;
+                    }
+
                     // If querying the currently selected mailbox, also update the
                     // connection's live mailbox state and emit events for changes.
                     let selected = getSelectedMailbox(connection);
                     let currentMailbox = selected && selected.path === path ? selected : false;
 
-                    let list = untagged.attributes && Array.isArray(untagged.attributes[1]) ? untagged.attributes[1] : false;
-                    if (!list) {
-                        return;
-                    }
                     let updates: [string, unknown][] = [];
-                    parseStatusList(list, (key, value) => {
+                    for (let [key, value] of Object.entries(status)) {
+                        if (key === 'path') {
+                            continue;
+                        }
                         map[key] = value;
                         if (currentMailbox && MAILBOX_UPDATERS[key]) {
                             updates.push([key, value]);
                         }
-                    });
+                    }
 
                     // Under a new UIDVALIDITY the counts describe a mailbox the selected view no
                     // longer matches, so they are not applied to it; the STATUS poll selects the

@@ -18,6 +18,7 @@ import { planSessionExpiry } from './session-expiry.js';
 import { downloadMessage, downloadMessageParts } from './download.js';
 import { AuthenticationFailure, createImapError, type ConnectionErrorSite, type ImapFlowError, type ImapFlowErrorCode } from './errors.js';
 import imapCommands, { type CommandHandler } from './imap-commands.js';
+import { parseStatusResponse } from './commands/status-fields.js';
 
 import {
     comparePaths,
@@ -2912,6 +2913,26 @@ export class ImapFlow extends EventEmitter {
         });
     }
 
+    // An unsolicited STATUS (NOTIFY, RFC 5465) reports another mailbox's counts; one that arrives
+    // during a STATUS command for a different mailbox is handed here by that command
+    /** @internal */
+    async untaggedStatus(untagged: ImapResponse): Promise<void> {
+        let status = parseStatusResponse(this, untagged);
+        if (!status || !status.path) {
+            return;
+        }
+        emitSafe(this, 'status', status);
+    }
+
+    // The server dropped notifications it could not deliver and turned NOTIFY off (RFC 5465
+    // section 5.8), so no SET is active any more
+    /** @internal */
+    async notificationOverflow(): Promise<void> {
+        this.notifySet = false;
+        this.log.info({ msg: 'Server notification overflow', cid: this.id });
+        emitSafe(this, 'notificationOverflow');
+    }
+
     // Reports one expunged message, either through the caller's expungeHandler or as an
     // 'expunge' event. Shared by the EXPUNGE and VANISHED paths so the two cannot drift.
     /** @internal */
@@ -3295,6 +3316,10 @@ export class ImapFlow extends EventEmitter {
         // these methods take an optional second argument, so make sure that some random IMAP tag is not used as the second argument
         this.untaggedHandlers.FETCH = untagged => this.untaggedFetch(untagged);
         this.untaggedHandlers.VANISHED = untagged => this.untaggedVanished(untagged);
+
+        // NOTIFY (RFC 5465): changes to other mailboxes arrive as unsolicited STATUS responses
+        this.untaggedHandlers.STATUS = untagged => this.untaggedStatus(untagged);
+        this.sectionHandlers.NOTIFICATIONOVERFLOW = () => this.notificationOverflow();
 
         let transport = this.options.transport;
         if (transport && this.options.proxy) {

@@ -640,4 +640,32 @@ describe('commands/status', () => {
         assert.equal(result.messages, 10);
         assert.equal(result.UNKNOWNKEY, undefined); // Unknown keys ignored
     });
+    it("Commands: status hands another mailbox's STATUS to the global handler (NOTIFY)", async () => {
+        const forwarded: any[] = [];
+        const other = { attributes: [{ value: 'Archive' }, [{ value: 'MESSAGES' }, { value: '50' }, { value: 'UIDNEXT' }, { value: '77' }]] };
+        const connection = createMockConnection({
+            state: 3,
+            untaggedHandlers: { STATUS: async (untagged: any) => forwarded.push(untagged) },
+            exec: async (cmd: any, attrs: any, opts: any) => {
+                await opts.untagged.STATUS(other);
+                await opts.untagged.STATUS({ attributes: [{ value: 'INBOX' }, [{ value: 'MESSAGES' }, { value: '100' }]] });
+                return { next: () => {} };
+            }
+        });
+        const result = await statusCommand(connection, 'INBOX', { messages: true, uidNext: true });
+        assert.deepEqual(result, { path: 'INBOX', messages: 100 });
+        assert.deepEqual(forwarded, [other]);
+        // the selected INBOX keeps its own counts
+        assert.equal(connection.mailbox.uidNext, 1000);
+    });
+    it('Commands: status matches its mailbox by the decoded name', async () => {
+        const connection = createMockConnection({
+            state: 2,
+            exec: async (cmd: any, attrs: any, opts: any) => {
+                await opts.untagged.STATUS({ attributes: [{ value: 'Entw&APw-rfe' }, [{ value: 'MESSAGES' }, { value: '5' }]] });
+                return { next: () => {} };
+            }
+        });
+        assert.deepEqual(await statusCommand(connection, 'Entwürfe', { messages: true }), { path: 'Entwürfe', messages: 5 });
+    });
 });
